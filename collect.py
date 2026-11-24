@@ -20,8 +20,8 @@ Keys are read from environment variables (or a .env file next to this script):
   GTFS_REGIONAL_KEY        key for "GTFS Regional"           (required)
   TRAFIKLAB_REALTIME_KEY   key for "Trafiklab Realtime APIs"  (optional)
 
-Run:  python collect.py            (Ctrl-C to stop, safe to restart)
-      python collect.py --once     (one round of everything, for testing)
+Run:  uv run collect.py            (Ctrl-C to stop, safe to restart)
+      uv run collect.py --once     (one round of everything, for testing)
 """
 
 from __future__ import annotations
