@@ -7,14 +7,19 @@ saves.
 ## Goal
 
 Predict, as early as possible on a weekday morning, **when bus 121 that is
-scheduled to leave Knektaparken at 07:30 will actually arrive**, more
-accurately than JLT's own real-time prediction. JLT's predictions are known to
-be poor, so don't copy them. Measure them, then beat them.
+scheduled to leave Knektaparken at 07:30 will actually arrive at
+Knektaparken**, more accurately than JLT's own real-time prediction. Olof wants
+to know when to walk out to the stop so he doesn't wait long, and without
+missing the bus. JLT's predictions are known to be poor, so don't copy them.
+Measure them, then beat them.
 
-**Open question: arrive *where*?** "Arrive" could mean arriving at
-Knektaparken (when to leave home) or at a stop further down the line (when
-you'll get there). **Ask Olof before modelling.** Until then, do both: arrival
-at Knektaparken and at every later stop on the trip.
+Only the arrival at **Knektaparken** matters. Later stops are not a target, but
+the stops *before* Knektaparken are useful signals for where the bus is and how
+late it's running.
+
+Missing the bus is much worse than waiting a few minutes, so the errors aren't
+symmetric. Besides average error, report how early you need to be at the stop
+to catch the bus e.g. 9 or 19 days out of 20, and how much waiting that costs.
 
 ## Deliverables
 
@@ -26,7 +31,7 @@ the results from GitHub:
 | `analysis/FINDINGS.md` | Plain-language results: what the data shows, how bad JLT's predictions are, which method works best and how well, and recommended next steps. Lead with the answer. |
 | `analysis/figures/*.png` | Plots referenced from FINDINGS.md |
 | `analysis/*.py` | The analysis code, runnable with `uv run analysis/<name>.py` |
-| `analysis/derived/*.csv` | Small derived tables (e.g. actual arrival times per trip and stop). Keep each under ~5 MB. |
+| `analysis/derived/*.csv` | Small derived tables (e.g. actual arrival times at each stop). Keep each under ~5 MB. |
 
 **Don't commit `data/`.** It's large, and it's in `.gitignore`.
 
@@ -91,7 +96,9 @@ GPS is the truth. For each trip and stop:
 - Cross-check against `current_status == STOPPED_AT` / `current_stop_sequence`
   changes, and against TripUpdates rows for stops already passed.
 
-Save the result as `analysis/derived/actual_arrivals.csv` (date, trip_id,
+Knektaparken is the target. The upstream stops are what you need for the
+GPS-based methods in step 5. Save the result as
+`analysis/derived/actual_arrivals.csv` (date, trip_id,
 stop_sequence, stop_id, stop_name, scheduled, actual, method, quality flag).
 
 ### 4. Measure how wrong JLT is
@@ -123,12 +130,14 @@ same lead times as in step 4. In rough order:
 5. A small regression combining the above. Only do this if there's enough
    data, and say so honestly if there isn't.
 
-Also note anything practical: when is the latest moment to check before
-leaving, and how much margin is needed to make the bus 9 days out of 10?
+End with a practical rule Olof can use, e.g. "check at 07:15; leave so you're
+at Knektaparken N min before the predicted time". Give the miss rate and the
+average wait for that rule, compared with trusting JLT's app.
 
 ### 6. Write FINDINGS.md
 
 Lead with the answer in a few sentences, e.g. "At 07:15, method X predicts the
-arrival within ±N min 90% of the time; JLT's prediction is within ±M min."
+arrival at Knektaparken within ±N min 90% of the time, while JLT's prediction
+is within ±M min."
 Then add data quality, methods, plots and limitations (only 5 days, weather,
 holidays). End with what to collect or build next. Commit and push.
