@@ -135,7 +135,7 @@ nohup uv run collect.py > /dev/null 2>&1 &
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `BUSY_START` / `BUSY_END` | `06:00` / `10:00` | The "busy window" around your morning trip |
+| `BUSY_START` / `BUSY_END` | `06:30` / `10:00` | The "busy window" around your morning trip |
 | `GTFS_RT_BUSY_SECONDS` | 30 | Live feeds in the busy window |
 | `GTFS_RT_QUIET_SECONDS` | 300 | Live feeds the rest of the day |
 | `REALTIME_API_SECONDS` | 60 | Departure board + trips (busy window only) |

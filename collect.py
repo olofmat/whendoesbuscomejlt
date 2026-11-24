@@ -54,7 +54,7 @@ STOP_NAME = os.environ.get("STOP_NAME", "Knektaparken")
 AREA_ID = os.environ.get("AREA_ID")  # set to skip the stop lookup
 
 # "Busy window": poll often. Outside it: poll rarely, to save quota.
-BUSY_START = os.environ.get("BUSY_START", "06:00")
+BUSY_START = os.environ.get("BUSY_START", "06:30")
 BUSY_END = os.environ.get("BUSY_END", "10:00")
 GTFS_RT_BUSY_SECONDS = int(os.environ.get("GTFS_RT_BUSY_SECONDS", "30"))
 GTFS_RT_QUIET_SECONDS = int(os.environ.get("GTFS_RT_QUIET_SECONDS", "300"))
