@@ -1,3 +1,0 @@
-requests>=2.28
-gtfs-realtime-bindings>=1.0
-tzdata  # needed on Windows for the Europe/Stockholm time zone

@@ -97,20 +97,17 @@ You can paste any of these URLs (with your key) into a browser to see the data.
 
 ## 3. Run the collector
 
-Needs Python 3.9 or newer.
+Uses [uv](https://docs.astral.sh/uv/). Install it once if you don't have it:
+`curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux) or
+`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"` (Windows).
+uv fetches Python 3.10+ and the dependencies by itself (from `pyproject.toml` / `uv.lock`).
 
 ```bash
 git clone https://github.com/olofmat/whendoesbuscomejlt.git
 cd whendoesbuscomejlt
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows:
-.venv\Scripts\activate
-
-pip install -r requirements.txt
-python collect.py --once     # quick test: one round, then exit
-python collect.py            # run for real; Ctrl-C to stop
+uv sync                      # create .venv and install dependencies
+uv run collect.py --once     # quick test: one round, then exit
+uv run collect.py            # run for real; Ctrl-C to stop
 ```
 
 `--once` should log a line like `VehiclePositions: 180 vehicles, 3 on line 121`.
@@ -124,7 +121,7 @@ stop and restart: everything is appended, nothing is overwritten.
 To keep it running after you close the terminal (macOS/Linux):
 
 ```bash
-nohup python collect.py > /dev/null 2>&1 &
+nohup uv run collect.py > /dev/null 2>&1 &
 ```
 
 ### Polling schedule (change in `.env` if you like)
