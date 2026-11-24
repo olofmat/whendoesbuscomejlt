@@ -100,7 +100,8 @@ You can paste any of these URLs (with your key) into a browser to see the data.
 Needs Python 3.9 or newer.
 
 ```bash
-cd bus121-collector
+git clone https://github.com/olofmat/whendoesbuscomejlt.git
+cd whendoesbuscomejlt
 python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
