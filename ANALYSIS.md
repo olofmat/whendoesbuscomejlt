@@ -66,6 +66,64 @@ for e in msg.entity:
         v = e.vehicle  # v.trip.trip_id, v.position.latitude, v.timestamp
 ```
 
+## Quick check after the first morning (do this first)
+
+Run this on day 1, e.g. at lunch after the first 06:30–10:00 window, while the
+collector keeps running. It should take about 15 minutes. The point is to
+find problems in what we collect **now**, not after 5 days.
+
+Rules for the check:
+
+- **Don't stop or restart the collector**, and don't write anything inside
+  `data/`. Only read. The files are being appended to, so read copies or
+  tolerate a half-written last line.
+- Put code in `analysis/check_day1.py` and the report in
+  `analysis/CHECK_DAY1.md`. Commit and push both, so the cloud project can
+  read them.
+- Keep it rough. No modelling.
+
+Answer these, each with a ✅ / ⚠️ / ❌ and one line of evidence:
+
+1. **Collector health.** Is it still running (recent lines in
+   `data/collect.log`)? Count ERROR/WARNING lines, and check for HTTP 401/403/429.
+2. **Snapshot coverage.** In `data/raw/<today>/`, list snapshots per hour and
+   the largest gap between consecutive snapshots in 06:30–10:00. Expect about
+   one every 30 s. Flag gaps over 2 min. Total size of `data/` so far, and
+   projected size for 5 days.
+3. **Static timetable.** Does `data/static/<today>_jlt.zip` exist, and does the
+   log say line 121 has more than 0 routes and trips?
+4. **Right stop.** In `data/stop_lookup.json`, is the chosen group the
+   Knektaparken in Jönköping? In `stops.txt`, which `stop_id`s are named
+   Knektaparken, and are they on line 121's stop sequence?
+5. **Target trip found.** Find today's line 121 trip departing Knektaparken
+   at 07:30:00 (as in step 2 below). Report its `trip_id` and direction.
+6. **GPS covers it.** Does `vehicle_positions_121.csv` have fixes for that
+   `trip_id`? Report the number of fixes, the first and last time, the typical
+   interval, and the closest distance to Knektaparken's coordinates. Does the
+   track cover the approach to and pass of the stop? If `trip_id` is empty or
+   doesn't match the static file, say so: that's a filtering bug to fix.
+7. **Predictions recorded.** Does `trip_updates_121.csv` have rows for that
+   trip at the Knektaparken stop? How many polls, from when to when? Are times
+   or only delays filled in? Is anything recorded after the bus passed?
+8. **Realtime API.** Does `departures_knektaparken.jsonl` contain the 07:30
+   121 with `is_realtime: true`? Does `trips_121.jsonl` contain that trip?
+9. **Other lines.** In one raw `vp_*.pb.gz` from about 07:15, how many vehicles
+   are there in total, and which other lines are within about 1 km of
+   Knektaparken? (These matter for the "earlier buses" idea later.)
+10. **First rough look.** For the 07:30 trip only: scheduled time at
+    Knektaparken; actual arrival (closest GPS approach, rough); and what JLT
+    predicted at 07:00, 07:10, 07:20 and 07:25. One small table, plus one plot
+    (`analysis/figures/day1_trip.png`) of JLT's predicted arrival over time with
+    a horizontal line at the actual arrival.
+
+End `CHECK_DAY1.md` with **"Fix before the next morning"**: concrete changes to
+`collect.py` or settings, if any. Examples: line filter missing trips, wrong
+stop, window too short, gaps, or disk use too high. If a change is clearly
+needed and small, make it in `collect.py`, run `uv run ruff format`, test with
+`uv run collect.py --once --out /tmp/bus121-test` (never the real `data/`), and
+commit it. Olof then restarts the collector with `git pull` in the evening.
+Otherwise write "Nothing to fix".
+
 ## Suggested steps
 
 ### 1. Sanity check
