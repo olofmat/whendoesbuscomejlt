@@ -70,6 +70,7 @@ log = logging.getLogger("collect")
 
 # ----------------------------------------------------------------- helpers --
 
+
 def load_dotenv(path: Path) -> None:
     """Minimal .env reader so no extra package is needed."""
     if not path.exists():
@@ -79,7 +80,9 @@ def load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        v = v.split(" #", 1)[0].strip().strip('"').strip("'")  # drop inline comment
+        v = (
+            v.split(" #", 1)[0].strip().strip('"').strip("'")
+        )  # drop inline comment
         os.environ.setdefault(k.strip(), v)
 
 
@@ -126,8 +129,15 @@ def append_jsonl(path: Path, obj: dict) -> None:
 
 # --------------------------------------------------------------- collector --
 
+
 class Collector:
-    def __init__(self, out: Path, static_key: str, gtfs_rt_key: str, rt_api_key: str | None):
+    def __init__(
+        self,
+        out: Path,
+        static_key: str,
+        gtfs_rt_key: str,
+        rt_api_key: str | None,
+    ):
         self.out = out
         self.static_key = static_key
         self.gtfs_rt_key = gtfs_rt_key
@@ -148,19 +158,50 @@ class Collector:
         self.stop_slug = STOP_NAME.lower().replace(" ", "_")
         self.seen_trips: dict[tuple[str, str], datetime] = {}
 
-        self.vp_csv = CsvLog(out / f"vehicle_positions_{LINE}.csv", [
-            "fetched_at", "feed_time", "vehicle_time", "vehicle_id", "trip_id",
-            "start_date", "route_id", "direction_id", "lat", "lon", "bearing",
-            "speed_mps", "current_stop_sequence", "stop_id", "stop_name",
-            "current_status", "occupancy_status",
-        ])
-        self.tu_csv = CsvLog(out / f"trip_updates_{LINE}.csv", [
-            "fetched_at", "feed_time", "update_time", "trip_id", "start_date",
-            "route_id", "trip_relationship", "vehicle_id", "stop_sequence",
-            "stop_id", "stop_name", "arrival_time", "arrival_delay_s",
-            "arrival_uncertainty", "departure_time", "departure_delay_s",
-            "stop_relationship",
-        ])
+        self.vp_csv = CsvLog(
+            out / f"vehicle_positions_{LINE}.csv",
+            [
+                "fetched_at",
+                "feed_time",
+                "vehicle_time",
+                "vehicle_id",
+                "trip_id",
+                "start_date",
+                "route_id",
+                "direction_id",
+                "lat",
+                "lon",
+                "bearing",
+                "speed_mps",
+                "current_stop_sequence",
+                "stop_id",
+                "stop_name",
+                "current_status",
+                "occupancy_status",
+            ],
+        )
+        self.tu_csv = CsvLog(
+            out / f"trip_updates_{LINE}.csv",
+            [
+                "fetched_at",
+                "feed_time",
+                "update_time",
+                "trip_id",
+                "start_date",
+                "route_id",
+                "trip_relationship",
+                "vehicle_id",
+                "stop_sequence",
+                "stop_id",
+                "stop_name",
+                "arrival_time",
+                "arrival_delay_s",
+                "arrival_uncertainty",
+                "departure_time",
+                "departure_delay_s",
+                "stop_relationship",
+            ],
+        )
 
     # ---- HTTP with retries ----
     def get(self, url: str, timeout: int = 30) -> requests.Response | None:
@@ -170,12 +211,18 @@ class Collector:
                 if r.status_code == 200:
                     return r
                 if r.status_code == 429:
-                    log.warning("Rate limited (429) on %s, backing off", safe_url(url))
+                    log.warning(
+                        "Rate limited (429) on %s, backing off", safe_url(url)
+                    )
                     time.sleep(60)
                     continue
                 if r.status_code in (401, 403):
-                    log.error("HTTP %s on %s: check that the key is right and "
-                              "added for this API", r.status_code, safe_url(url))
+                    log.error(
+                        "HTTP %s on %s: check that the key is right and "
+                        "added for this API",
+                        r.status_code,
+                        safe_url(url),
+                    )
                     return None
                 log.warning("HTTP %s on %s", r.status_code, safe_url(url))
             except requests.RequestException as e:
@@ -193,13 +240,17 @@ class Collector:
             # Samtrafiken publishes new files roughly 03:00-07:00. Use the
             # newest file we have if today's download fails.
             log.info("Downloading static GTFS for %s", today)
-            r = self.get(STATIC_URL.format(op=OPERATOR, key=self.static_key), timeout=180)
+            r = self.get(
+                STATIC_URL.format(op=OPERATOR, key=self.static_key), timeout=180
+            )
             if r is not None:
                 path.write_bytes(r.content)
             else:
                 older = sorted((self.out / "static").glob(f"*_{OPERATOR}.zip"))
                 if not older:
-                    raise SystemExit("Could not download static GTFS and none saved yet.")
+                    raise SystemExit(
+                        "Could not download static GTFS and none saved yet."
+                    )
                 path = older[-1]
                 log.warning("Using older static file %s", path.name)
         self.load_static(path)
@@ -207,37 +258,54 @@ class Collector:
 
     def load_static(self, path: Path) -> None:
         with zipfile.ZipFile(path) as z:
+
             def rows(name: str):
                 with z.open(name) as f:
                     yield from csv.DictReader(io.TextIOWrapper(f, "utf-8-sig"))
 
             self.line_route_ids = {
-                r["route_id"] for r in rows("routes.txt")
+                r["route_id"]
+                for r in rows("routes.txt")
                 if r.get("route_short_name", "").strip() == LINE
             }
             self.line_trip_ids = {
-                r["trip_id"] for r in rows("trips.txt")
+                r["trip_id"]
+                for r in rows("trips.txt")
                 if r["route_id"] in self.line_route_ids
             }
-            self.stop_names = {r["stop_id"]: r.get("stop_name", "") for r in rows("stops.txt")}
-        log.info("Static %s: line %s = %d route(s), %d trip(s)", path.name, LINE,
-                 len(self.line_route_ids), len(self.line_trip_ids))
+            self.stop_names = {
+                r["stop_id"]: r.get("stop_name", "") for r in rows("stops.txt")
+            }
+        log.info(
+            "Static %s: line %s = %d route(s), %d trip(s)",
+            path.name,
+            LINE,
+            len(self.line_route_ids),
+            len(self.line_trip_ids),
+        )
         if not self.line_route_ids:
-            log.warning("Line %s not found in routes.txt. Raw feeds are still saved.", LINE)
+            log.warning(
+                "Line %s not found in routes.txt. Raw feeds are still saved.",
+                LINE,
+            )
 
     def is_line(self, trip) -> bool:
-        return (trip.trip_id in self.line_trip_ids
-                or (trip.route_id and trip.route_id in self.line_route_ids))
+        return trip.trip_id in self.line_trip_ids or (
+            trip.route_id and trip.route_id in self.line_route_ids
+        )
 
     # ---- GTFS Realtime ----
     def fetch_feed(self, feed: str, short: str, t: datetime):
-        r = self.get(RT_URL.format(op=OPERATOR, feed=feed, key=self.gtfs_rt_key))
+        r = self.get(
+            RT_URL.format(op=OPERATOR, feed=feed, key=self.gtfs_rt_key)
+        )
         if r is None:
             return None
         d = self.out / "raw" / t.strftime("%Y-%m-%d") / t.strftime("%H")
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{short}_{t.strftime('%Y%m%dT%H%M%S')}.pb.gz").write_bytes(
-            gzip.compress(r.content))
+            gzip.compress(r.content)
+        )
         msg = gtfs_realtime_pb2.FeedMessage()
         msg.ParseFromString(r.content)
         return msg
@@ -255,28 +323,50 @@ class Collector:
                 v = e.vehicle
                 if not self.is_line(v.trip):
                     continue
-                rows.append({
-                    "fetched_at": fetched,
-                    "feed_time": fmt_ts(vp.header.timestamp),
-                    "vehicle_time": fmt_ts(v.timestamp),
-                    "vehicle_id": v.vehicle.id,
-                    "trip_id": v.trip.trip_id,
-                    "start_date": v.trip.start_date,
-                    "route_id": v.trip.route_id,
-                    "direction_id": v.trip.direction_id if v.trip.HasField("direction_id") else "",
-                    "lat": v.position.latitude,
-                    "lon": v.position.longitude,
-                    "bearing": v.position.bearing if v.position.HasField("bearing") else "",
-                    "speed_mps": v.position.speed if v.position.HasField("speed") else "",
-                    "current_stop_sequence": v.current_stop_sequence if v.HasField("current_stop_sequence") else "",
-                    "stop_id": v.stop_id,
-                    "stop_name": self.stop_names.get(v.stop_id, ""),
-                    "current_status": gtfs_realtime_pb2.VehiclePosition.VehicleStopStatus.Name(v.current_status) if v.HasField("current_status") else "",
-                    "occupancy_status": gtfs_realtime_pb2.VehiclePosition.OccupancyStatus.Name(v.occupancy_status) if v.HasField("occupancy_status") else "",
-                })
+                rows.append(
+                    {
+                        "fetched_at": fetched,
+                        "feed_time": fmt_ts(vp.header.timestamp),
+                        "vehicle_time": fmt_ts(v.timestamp),
+                        "vehicle_id": v.vehicle.id,
+                        "trip_id": v.trip.trip_id,
+                        "start_date": v.trip.start_date,
+                        "route_id": v.trip.route_id,
+                        "direction_id": v.trip.direction_id
+                        if v.trip.HasField("direction_id")
+                        else "",
+                        "lat": v.position.latitude,
+                        "lon": v.position.longitude,
+                        "bearing": v.position.bearing
+                        if v.position.HasField("bearing")
+                        else "",
+                        "speed_mps": v.position.speed
+                        if v.position.HasField("speed")
+                        else "",
+                        "current_stop_sequence": v.current_stop_sequence
+                        if v.HasField("current_stop_sequence")
+                        else "",
+                        "stop_id": v.stop_id,
+                        "stop_name": self.stop_names.get(v.stop_id, ""),
+                        "current_status": gtfs_realtime_pb2.VehiclePosition.VehicleStopStatus.Name(
+                            v.current_status
+                        )
+                        if v.HasField("current_status")
+                        else "",
+                        "occupancy_status": gtfs_realtime_pb2.VehiclePosition.OccupancyStatus.Name(
+                            v.occupancy_status
+                        )
+                        if v.HasField("occupancy_status")
+                        else "",
+                    }
+                )
             self.vp_csv.write(rows)
-            log.info("VehiclePositions: %d vehicles, %d on line %s",
-                     len(vp.entity), len(rows), LINE)
+            log.info(
+                "VehiclePositions: %d vehicles, %d on line %s",
+                len(vp.entity),
+                len(rows),
+                LINE,
+            )
 
         tu = self.fetch_feed("TripUpdates", "tu", t)
         if tu is not None:
@@ -296,7 +386,9 @@ class Collector:
                     "trip_id": u.trip.trip_id,
                     "start_date": u.trip.start_date,
                     "route_id": u.trip.route_id,
-                    "trip_relationship": gtfs_realtime_pb2.TripDescriptor.ScheduleRelationship.Name(u.trip.schedule_relationship),
+                    "trip_relationship": gtfs_realtime_pb2.TripDescriptor.ScheduleRelationship.Name(
+                        u.trip.schedule_relationship
+                    ),
                     "vehicle_id": u.vehicle.id,
                 }
                 if not u.stop_time_update:  # e.g. a cancelled trip
@@ -304,37 +396,68 @@ class Collector:
                 for s in u.stop_time_update:
                     a = s.arrival if s.HasField("arrival") else None
                     dp = s.departure if s.HasField("departure") else None
-                    rows.append({**base,
-                        "stop_sequence": s.stop_sequence if s.HasField("stop_sequence") else "",
-                        "stop_id": s.stop_id,
-                        "stop_name": self.stop_names.get(s.stop_id, ""),
-                        "arrival_time": fmt_ts(a.time) if a and a.HasField("time") else "",
-                        "arrival_delay_s": a.delay if a and a.HasField("delay") else "",
-                        "arrival_uncertainty": a.uncertainty if a and a.HasField("uncertainty") else "",
-                        "departure_time": fmt_ts(dp.time) if dp and dp.HasField("time") else "",
-                        "departure_delay_s": dp.delay if dp and dp.HasField("delay") else "",
-                        "stop_relationship": gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.ScheduleRelationship.Name(s.schedule_relationship),
-                    })
+                    rows.append(
+                        {
+                            **base,
+                            "stop_sequence": s.stop_sequence
+                            if s.HasField("stop_sequence")
+                            else "",
+                            "stop_id": s.stop_id,
+                            "stop_name": self.stop_names.get(s.stop_id, ""),
+                            "arrival_time": fmt_ts(a.time)
+                            if a and a.HasField("time")
+                            else "",
+                            "arrival_delay_s": a.delay
+                            if a and a.HasField("delay")
+                            else "",
+                            "arrival_uncertainty": a.uncertainty
+                            if a and a.HasField("uncertainty")
+                            else "",
+                            "departure_time": fmt_ts(dp.time)
+                            if dp and dp.HasField("time")
+                            else "",
+                            "departure_delay_s": dp.delay
+                            if dp and dp.HasField("delay")
+                            else "",
+                            "stop_relationship": gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.ScheduleRelationship.Name(
+                                s.schedule_relationship
+                            ),
+                        }
+                    )
             self.tu_csv.write(rows)
-            log.info("TripUpdates: %d trips, %d on line %s", len(tu.entity), n_trips, LINE)
+            log.info(
+                "TripUpdates: %d trips, %d on line %s",
+                len(tu.entity),
+                n_trips,
+                LINE,
+            )
 
     # ---- Trafiklab Realtime API (JSON) ----
     def lookup_area(self) -> None:
         if self.area_id or not self.rt_api_key:
             return
-        r = self.get(f"{API}/stops/name/{requests.utils.quote(STOP_NAME)}?key={self.rt_api_key}")
+        r = self.get(
+            f"{API}/stops/name/{requests.utils.quote(STOP_NAME)}?key={self.rt_api_key}"
+        )
         if r is None:
             return
         groups = r.json().get("stop_groups", [])
         (self.out / "stop_lookup.json").write_text(
-            json.dumps(r.json(), ensure_ascii=False, indent=2), encoding="utf-8")
+            json.dumps(r.json(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         if not groups:
-            log.warning("No stop found for '%s'. Set AREA_ID manually.", STOP_NAME)
+            log.warning(
+                "No stop found for '%s'. Set AREA_ID manually.", STOP_NAME
+            )
             return
         g = groups[0]
         self.area_id = str(g["id"])
-        log.info("Stop '%s' -> area %s (%s). All matches in stop_lookup.json",
-                 STOP_NAME, self.area_id, g.get("name"))
+        log.info(
+            "Stop '%s' -> area %s (%s). All matches in stop_lookup.json",
+            STOP_NAME,
+            self.area_id,
+            g.get("name"),
+        )
 
     def poll_realtime_api(self) -> None:
         if not self.rt_api_key:
@@ -347,8 +470,10 @@ class Collector:
         if r is None:
             return
         data = r.json()
-        append_jsonl(self.out / f"departures_{self.stop_slug}.jsonl",
-                     {"fetched_at": t.isoformat(timespec="seconds"), "data": data})
+        append_jsonl(
+            self.out / f"departures_{self.stop_slug}.jsonl",
+            {"fetched_at": t.isoformat(timespec="seconds"), "data": data},
+        )
 
         for d in data.get("departures", []):
             if str(d.get("route", {}).get("designation")) == LINE:
@@ -364,14 +489,25 @@ class Collector:
             if t - last > timedelta(hours=2):
                 del self.seen_trips[(trip_id, start_date)]
                 continue
-            r = self.get(f"{API}/trips/{trip_id}/{start_date}?key={self.rt_api_key}")
+            r = self.get(
+                f"{API}/trips/{trip_id}/{start_date}?key={self.rt_api_key}"
+            )
             if r is not None:
-                append_jsonl(self.out / f"trips_{LINE}.jsonl",
-                             {"fetched_at": t.isoformat(timespec="seconds"),
-                              "trip_id": trip_id, "start_date": start_date,
-                              "data": r.json()})
-        log.info("Realtime API: %d departures, following %d line %s trip(s)",
-                 len(data.get("departures", [])), len(self.seen_trips), LINE)
+                append_jsonl(
+                    self.out / f"trips_{LINE}.jsonl",
+                    {
+                        "fetched_at": t.isoformat(timespec="seconds"),
+                        "trip_id": trip_id,
+                        "start_date": start_date,
+                        "data": r.json(),
+                    },
+                )
+        log.info(
+            "Realtime API: %d departures, following %d line %s trip(s)",
+            len(data.get("departures", [])),
+            len(self.seen_trips),
+            LINE,
+        )
 
     # ---- main loop ----
     def run(self, once: bool = False) -> None:
@@ -387,7 +523,9 @@ class Collector:
                 self.ensure_static()
                 if time.monotonic() >= next_rt:
                     self.poll_gtfs_rt()
-                    next_rt = time.monotonic() + (GTFS_RT_BUSY_SECONDS if busy else GTFS_RT_QUIET_SECONDS)
+                    next_rt = time.monotonic() + (
+                        GTFS_RT_BUSY_SECONDS if busy else GTFS_RT_QUIET_SECONDS
+                    )
                 if (busy or once) and time.monotonic() >= next_api:
                     self.poll_realtime_api()
                     next_api = time.monotonic() + REALTIME_API_SECONDS
@@ -415,20 +553,30 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout),
-                  logging.FileHandler(out / "collect.log", encoding="utf-8")],
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(out / "collect.log", encoding="utf-8"),
+        ],
     )
 
     old = os.environ.get("GTFS_REGIONAL_KEY")  # older single-key name
     static_key = os.environ.get("GTFS_STATIC_KEY") or old
     gtfs_rt_key = os.environ.get("GTFS_REALTIME_KEY") or old
     rt_key = os.environ.get("TRAFIKLAB_REALTIME_KEY")
-    missing = [n for n, v in (("GTFS_STATIC_KEY", static_key),
-                              ("GTFS_REALTIME_KEY", gtfs_rt_key)) if not v]
+    missing = [
+        n
+        for n, v in (
+            ("GTFS_STATIC_KEY", static_key),
+            ("GTFS_REALTIME_KEY", gtfs_rt_key),
+        )
+        if not v
+    ]
     if missing:
         raise SystemExit(f"Set {', '.join(missing)} in .env (see README).")
     if not rt_key:
-        log.warning("No TRAFIKLAB_REALTIME_KEY: skipping departure board and trip data.")
+        log.warning(
+            "No TRAFIKLAB_REALTIME_KEY: skipping departure board and trip data."
+        )
 
     Collector(out, static_key, gtfs_rt_key, rt_key).run(once=args.once)
 
