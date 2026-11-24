@@ -9,14 +9,17 @@ All data comes from **Trafiklab** (run by Samtrafiken) and is **free**.
 
 ---
 
-## 1. Get the two API keys
+## 1. Get the three API keys
 
-You need two keys. Both are free and come from the same account.
+You need **three** keys. All are free and come from the same Trafiklab project.
+Each API in the project gets its own key, so one key won't work for another API
+(that gives HTTP 403).
 
-| Key | What it gives | Needed? |
-|---|---|---|
-| **GTFS Regional** | Timetable (static GTFS) + live feeds: bus GPS positions every few seconds and JLT's predictions for every trip | **Yes** (the main data) |
-| **Trafiklab Realtime APIs** | Easy JSON: departure board for Knektaparken and every stop of a given trip | Recommended (handy for cross-checking) |
+| API name in Trafiklab's dropdown | `.env` variable | What it gives | Needed? |
+|---|---|---|---|
+| **GTFS Regional Static** | `GTFS_STATIC_KEY` | The timetable: routes, stops, trips, scheduled times (zip, once a day) | **Yes** |
+| **GTFS Regional Realtime** | `GTFS_REALTIME_KEY` | Live feeds: bus GPS positions and JLT's predictions for every trip | **Yes** (the main data) |
+| **Trafiklab Realtime APIs** | `TRAFIKLAB_REALTIME_KEY` | Easy JSON: departure board for Knektaparken and every stop of a given trip | Recommended (handy for cross-checking) |
 
 ### Steps
 
@@ -25,15 +28,18 @@ You need two keys. Both are free and come from the same account.
 2. **Create a project** at <https://developer.trafiklab.se/project/list>.
    Click the purple **New project** button, give it a name (e.g. "Bus 121"),
    choose a type and write a short description. Save.
-3. **Add the first key.** In the project, choose **GTFS Regional** in the
-   API dropdown and click **Add API key to project**.
-4. **Add the second key.** Choose **Trafiklab Realtime APIs** in the dropdown and add that too.
-5. Copy both keys into a file called `.env` next to `collect.py`.
-   Start from `.env.example`:
+3. **Add the three APIs.** In the project, pick each of these in the API
+   dropdown and click **Add API key to project** after each one:
+   - GTFS Regional Static
+   - GTFS Regional Realtime
+   - Trafiklab Realtime APIs
+4. **Copy the keys into `.env`.** Copy `.env.example` to `.env` (next to
+   `collect.py`) and paste each key after the matching name:
 
    ```
-   GTFS_REGIONAL_KEY=paste-gtfs-regional-key-here
-   TRAFIKLAB_REALTIME_KEY=paste-realtime-api-key-here
+   GTFS_STATIC_KEY=key-from-GTFS-Regional-Static
+   GTFS_REALTIME_KEY=key-from-GTFS-Regional-Realtime
+   TRAFIKLAB_REALTIME_KEY=key-from-Trafiklab-Realtime-APIs
    ```
 
    Keep `.env` private and don't commit it. It's already in `.gitignore`.
@@ -46,8 +52,8 @@ need more, click **Upgrade quota** next to the key. That's free too and takes
 
 | API | Per minute | Per month |
 |---|---|---|
-| GTFS Regional, live feeds | 50 | 30,000 |
-| GTFS Regional, timetable zip | 10 | **50** |
+| GTFS Regional Realtime | 50 | 30,000 |
+| GTFS Regional Static | 10 | **50** |
 | Trafiklab Realtime APIs | 25 | 100,000 |
 
 The default settings use about **1,450 live-feed calls a day** (~7,200 for
@@ -111,8 +117,9 @@ uv run collect.py            # run for real; Ctrl-C to stop
 ```
 
 `--once` should log a line like `VehiclePositions: 180 vehicles, 3 on line 121`.
-If it logs HTTP 401/403, check that the key is pasted correctly and that it was
-added for the right API.
+If it logs HTTP 401/403, the key in that variable is wrong or belongs to a
+different API. The log line shows which URL failed: `/gtfs/` is the Static key,
+`/gtfs-rt/` the GTFS Realtime key, `realtime-api` the Trafiklab Realtime key.
 
 **It must keep running for ~5 days.** Use a computer that stays on and
 doesn't sleep, such as a desktop, a Raspberry Pi or a cheap VPS. It's safe to

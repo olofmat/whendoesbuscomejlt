@@ -17,7 +17,8 @@ The raw .pb.gz files keep everything, so nothing is lost if we later want
 another line or stop. The CSVs are just a convenient head start.
 
 Keys are read from environment variables (or a .env file next to this script):
-  GTFS_REGIONAL_KEY        key for "GTFS Regional"           (required)
+  GTFS_STATIC_KEY          key for "GTFS Regional Static"     (required)
+  GTFS_REALTIME_KEY        key for "GTFS Regional Realtime"   (required)
   TRAFIKLAB_REALTIME_KEY   key for "Trafiklab Realtime APIs"  (optional)
 
 Run:  uv run collect.py            (Ctrl-C to stop, safe to restart)
@@ -78,7 +79,8 @@ def load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        v = v.split(" #", 1)[0].strip().strip('"').strip("'")  # drop inline comment
+        os.environ.setdefault(k.strip(), v)
 
 
 def now() -> datetime:
@@ -125,9 +127,10 @@ def append_jsonl(path: Path, obj: dict) -> None:
 # --------------------------------------------------------------- collector --
 
 class Collector:
-    def __init__(self, out: Path, gtfs_key: str, rt_api_key: str | None):
+    def __init__(self, out: Path, static_key: str, gtfs_rt_key: str, rt_api_key: str | None):
         self.out = out
-        self.gtfs_key = gtfs_key
+        self.static_key = static_key
+        self.gtfs_rt_key = gtfs_rt_key
         self.rt_api_key = rt_api_key
         self.http = requests.Session()
         self.http.headers["Accept-Encoding"] = "gzip"
@@ -190,7 +193,7 @@ class Collector:
             # Samtrafiken publishes new files roughly 03:00-07:00. Use the
             # newest file we have if today's download fails.
             log.info("Downloading static GTFS for %s", today)
-            r = self.get(STATIC_URL.format(op=OPERATOR, key=self.gtfs_key), timeout=180)
+            r = self.get(STATIC_URL.format(op=OPERATOR, key=self.static_key), timeout=180)
             if r is not None:
                 path.write_bytes(r.content)
             else:
@@ -228,7 +231,7 @@ class Collector:
 
     # ---- GTFS Realtime ----
     def fetch_feed(self, feed: str, short: str, t: datetime):
-        r = self.get(RT_URL.format(op=OPERATOR, feed=feed, key=self.gtfs_key))
+        r = self.get(RT_URL.format(op=OPERATOR, feed=feed, key=self.gtfs_rt_key))
         if r is None:
             return None
         d = self.out / "raw" / t.strftime("%Y-%m-%d") / t.strftime("%H")
@@ -416,14 +419,18 @@ def main() -> None:
                   logging.FileHandler(out / "collect.log", encoding="utf-8")],
     )
 
-    gtfs_key = os.environ.get("GTFS_REGIONAL_KEY")
+    old = os.environ.get("GTFS_REGIONAL_KEY")  # older single-key name
+    static_key = os.environ.get("GTFS_STATIC_KEY") or old
+    gtfs_rt_key = os.environ.get("GTFS_REALTIME_KEY") or old
     rt_key = os.environ.get("TRAFIKLAB_REALTIME_KEY")
-    if not gtfs_key:
-        raise SystemExit("Set GTFS_REGIONAL_KEY (see README).")
+    missing = [n for n, v in (("GTFS_STATIC_KEY", static_key),
+                              ("GTFS_REALTIME_KEY", gtfs_rt_key)) if not v]
+    if missing:
+        raise SystemExit(f"Set {', '.join(missing)} in .env (see README).")
     if not rt_key:
         log.warning("No TRAFIKLAB_REALTIME_KEY: skipping departure board and trip data.")
 
-    Collector(out, gtfs_key, rt_key).run(once=args.once)
+    Collector(out, static_key, gtfs_rt_key, rt_key).run(once=args.once)
 
 
 if __name__ == "__main__":
