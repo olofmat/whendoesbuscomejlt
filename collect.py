@@ -47,6 +47,25 @@ from google.transit import gtfs_realtime_pb2
 
 # ---------------------------------------------------------------- settings --
 
+
+def load_dotenv(path: Path) -> None:
+    """Minimal .env reader so no extra package is needed."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        # Drop an inline comment, then surrounding quotes.
+        v = v.split(" #", 1)[0].strip().strip('"').strip("'")
+        os.environ.setdefault(k.strip(), v)
+
+
+# Load .env before reading the settings below, so overrides there apply.
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+
 TZ = ZoneInfo("Europe/Stockholm")
 OPERATOR = "jlt"
 LINE = os.environ.get("LINE", "121")
@@ -69,21 +88,6 @@ log = logging.getLogger("collect")
 
 
 # ----------------------------------------------------------------- helpers --
-
-
-def load_dotenv(path: Path) -> None:
-    """Minimal .env reader so no extra package is needed."""
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        v = (
-            v.split(" #", 1)[0].strip().strip('"').strip("'")
-        )  # drop inline comment
-        os.environ.setdefault(k.strip(), v)
 
 
 def now() -> datetime:
@@ -150,6 +154,7 @@ class Collector:
         (out / "raw").mkdir(parents=True, exist_ok=True)
 
         self.static_day: str | None = None
+        self.static_retry_at = 0.0
         self.line_trip_ids: set[str] = set()
         self.line_route_ids: set[str] = set()
         self.stop_names: dict[str, str] = {}
@@ -233,7 +238,7 @@ class Collector:
     # ---- static GTFS, once per day ----
     def ensure_static(self) -> None:
         today = now().strftime("%Y-%m-%d")
-        if self.static_day == today:
+        if self.static_day == today or time.monotonic() < self.static_retry_at:
             return
         path = self.out / "static" / f"{today}_{OPERATOR}.zip"
         if not path.exists():
@@ -244,7 +249,11 @@ class Collector:
                 STATIC_URL.format(op=OPERATOR, key=self.static_key), timeout=180
             )
             if r is not None:
-                path.write_bytes(r.content)
+                # Write to a temp file and rename, so a crash mid-write never
+                # leaves a broken zip under the final name.
+                tmp = path.with_suffix(".zip.part")
+                tmp.write_bytes(r.content)
+                tmp.replace(path)
             else:
                 older = sorted((self.out / "static").glob(f"*_{OPERATOR}.zip"))
                 if not older:
@@ -253,7 +262,16 @@ class Collector:
                     )
                 path = older[-1]
                 log.warning("Using older static file %s", path.name)
-        self.load_static(path)
+        try:
+            self.load_static(path)
+        except (zipfile.BadZipFile, KeyError) as e:
+            # Corrupt or incomplete file: delete it and retry in 10 min.
+            # Live feeds keep being saved meanwhile (raw files are complete;
+            # only the line filter for the CSVs needs the timetable).
+            log.error("Bad static file %s (%s), deleting it", path.name, e)
+            path.unlink(missing_ok=True)
+            self.static_retry_at = time.monotonic() + 600
+            return
         self.static_day = today
 
     def load_static(self, path: Path) -> None:
@@ -512,6 +530,7 @@ class Collector:
     # ---- main loop ----
     def run(self, once: bool = False) -> None:
         next_rt = next_api = 0.0
+        was_busy = False
         stop = {"flag": False}
         signal.signal(signal.SIGINT, lambda *_: stop.update(flag=True))
         signal.signal(signal.SIGTERM, lambda *_: stop.update(flag=True))
@@ -521,14 +540,20 @@ class Collector:
             busy = in_busy_window(t)
             try:
                 self.ensure_static()
-                if time.monotonic() >= next_rt:
-                    self.poll_gtfs_rt()
-                    next_rt = time.monotonic() + (
+                # Poll at once when the busy window opens, instead of waiting
+                # out the rest of a long quiet interval.
+                window_opened = busy and not was_busy
+                was_busy = busy
+                if window_opened or time.monotonic() >= next_rt:
+                    interval = (
                         GTFS_RT_BUSY_SECONDS if busy else GTFS_RT_QUIET_SECONDS
                     )
+                    # Schedule first, so an error can't cause a tight retry.
+                    next_rt = time.monotonic() + interval
+                    self.poll_gtfs_rt()
                 if (busy or once) and time.monotonic() >= next_api:
-                    self.poll_realtime_api()
                     next_api = time.monotonic() + REALTIME_API_SECONDS
+                    self.poll_realtime_api()
             except SystemExit:
                 raise
             except Exception:  # keep running for days; log and continue
@@ -541,7 +566,6 @@ class Collector:
 
 def main() -> None:
     here = Path(__file__).resolve().parent
-    load_dotenv(here / ".env")
 
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--out", default=str(here / "data"), help="output folder")
