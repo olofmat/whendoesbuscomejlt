@@ -166,3 +166,5 @@ predict the 07:30 arrival.
 
 Data licence: GTFS Regional is CC0. The Realtime APIs are CC-BY 4.0
 (credit Trafiklab.se).
+
+For analysing the collected data, see [ANALYSIS.md](ANALYSIS.md).
