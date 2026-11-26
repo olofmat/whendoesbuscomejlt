@@ -36,8 +36,7 @@ every number below as a first impression, not a statistic.
    (median 6.1) to reach Knektaparken; on 25 Nov the jump came 2 to 3 min
    before the bus left, which only gives you more time. If your walk to the
    stop is 4 min or less, you can leave home when the time jumps, and you'd
-   have waited about
-   1 to 3 min.
+   have waited about 1 to 3 min.
 3. Once the time has jumped, JLT's prediction is good: add about 1 minute to
    it.
 
