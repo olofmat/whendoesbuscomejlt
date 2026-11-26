@@ -11,6 +11,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+analysis = [
+    "matplotlib>=3.10.9",
+    "pandas>=2.3.3",
+]
 dev = [
     "ruff>=0.17.6",
 ]
